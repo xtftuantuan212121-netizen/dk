@@ -32,6 +32,14 @@ function render(){
   const tonightCards = td.d0.map(id=>BYID[id]).filter(Boolean);
   const chapOfTonight = [...new Set(tonightCards.map(c=>`${c.board} · ${c.chapShort}`))].join(" / ");
   const R = 62, C = 2*Math.PI*R;
+  // 今日进度:今早每张卡 1 分 + 今晚 D0(选了卡才算) 1 分 + 「今天还要做」每条 1 分
+  const todosAll = td.todos||[];
+  const tN = due.length + (td.d0.length?1:0) + todosAll.length;
+  const tDone = reviewed + (td.d0.length&&td.d0done?1:0) + todosAll.filter(t=>t.ok).length;
+  const TP = { pct: tN? tDone/tN*100 : 0, done:tDone, total:tN };
+  const todayMode = pmode==="today";
+  const shown = todayMode ? TP : P;
+  const isFull = todayMode && tN>0 && tDone===tN;
 
   let picker = "";
   if (pickerOpen && !td.d0done) {
@@ -66,10 +74,13 @@ function render(){
     </div>
     <div class="orb" style="right:290px;top:52px;width:88px;height:88px;z-index:1"></div>
     <span class="spark" style="right:380px;top:22px">✦</span><span class="spark t" style="right:250px;top:150px">✧</span>
-    <div class="ring ser"><div class="pct">${P.pct.toFixed(1)}<span style="font-size:24px">%</span></div><div class="cap">TOTAL PROGRESS · ${P.learned}/${P.total} LEARNED</div></div>
+    <div class="ring ser"><div class="pct ${isFull?"full":""}">${todayMode ? (tN? Math.floor(TP.pct) : 0) : P.pct.toFixed(1)}<span style="font-size:32px">%</span></div>
+      <div class="cap">${todayMode ? `TODAY · ${TP.done}/${TP.total} DONE${isFull?" ✓":""}` : `TOTAL PROGRESS · ${P.learned}/${P.total} LEARNED`}</div>
+      <div class="pmode ${todayMode?"today":""}" data-pmode title="切换：总进度 / 今天"><span class="lab ${todayMode?"":"on"}">总进度</span><span class="sw"><i></i></span><span class="lab ${todayMode?"on":""}">今天</span></div>
+    </div>
   </div>
-  <div class="bar"><i style="width:${P.pct}%"></i></div>
-  <div class="barrow"><span>${P.total} 张卡各走到第几格，加起来</span><span>近 14 天 ${streakDots()}</span></div>
+  <div class="bar ${isFull?"full":""}"><i style="width:${shown.pct}%"></i>${todayMode&&tN?Array.from({length:tN-1},(_,i)=>`<span class="mark" style="left:${(i+1)/tN*100}%"></span>`).join(""):""}</div>
+  <div class="barrow"><span>${todayMode ? (tN? `今天 ${tN} 件：今早 ${due.length} 张 · 今晚 ${td.d0.length?"1 批":"0"} · 还要做 ${todosAll.length} 条 —— 全勾完就是 100%` : "今天还没有任务。选今晚的卡、或在右边加一件事。") : `${P.total} 张卡各走到第几格，加起来`}</span><span>近 14 天 ${streakDots()}</span></div>
   <div class="boards ser">${boards.map(x=>`<span><b>${x.pct.toFixed(0)}%</b>${x.b} <span style="color:var(--ink3);font-size:12px">${x.learned}/${x.total}</span></span>`).join("")}</div>
 
   <div class="wheel">${STAGES.map((s,i)=>`<div class="seg ${hot.has(i)?"hot":""} ${i>=3?"v":""} ${i>=6&&!hot.has(i)?"dim":""}"><span class="lab ser"><b>(${pad2(i)})</b>${s.k}</span><em>${s.short}</em><u>${i===0?(td.d0.length?`今晚 ${td.d0.length}`:"—"):(stageCount(i)?stageCount(i)+" 张":"—")}</u></div>`).join("")}</div>
@@ -138,8 +149,10 @@ function render(){
   qa("[data-dellog]").forEach(b=>b.onclick=()=>delLog(+b.dataset.dellog));
   const fl=q("[data-addlog]"); if(fl) fl.onsubmit=e=>{ e.preventDefault(); addLog(fl.x.value); setTimeout(()=>{ const f=q(".feed"); if(f) f.scrollTop=f.scrollHeight; const i=q("[data-addlog] input"); if(i) i.focus(); },0); };
   const ex=q("[data-export]"); if(ex) ex.onclick=exportState;
+  const pm=q("[data-pmode]"); if(pm) pm.onclick=()=>{ pmode = pmode==="today"?"total":"today"; localStorage.setItem("dk_pmode", pmode); render(); };
   const lg=q("[data-login]"); if(lg) lg.onclick=askToken; const lo=q("[data-logout]"); if(lo) lo.onclick=askToken;
   // 分栏拖拽(记住宽度)
   const sp=q("#split"); if(sp){ sp.onmousedown=e=>{ e.preventDefault(); sp.classList.add("on"); const move=ev=>{ const w=Math.min(760,Math.max(360, document.querySelector(".cols").getBoundingClientRect().right - ev.clientX)); document.documentElement.style.setProperty("--right", w+"px"); }; const up=()=>{ sp.classList.remove("on"); localStorage.setItem("dk_right", getComputedStyle(document.documentElement).getPropertyValue("--right")); window.removeEventListener("mousemove",move); window.removeEventListener("mouseup",up); }; window.addEventListener("mousemove",move); window.addEventListener("mouseup",up); }; }
 }
+let pmode = localStorage.getItem("dk_pmode") || "today";
 const savedW = localStorage.getItem("dk_right"); if (savedW) document.documentElement.style.setProperty("--right", savedW.trim());
