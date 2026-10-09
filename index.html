@@ -1,136 +1,15 @@
 <!doctype html>
-<html lang="zh">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>传播学 · 打卡</title>
-<style>
-  :root{--ink:#111;--ink2:#444;--ink3:#8a8a8a;--rule:#111;--paper:#fbfaf7;--soft:#ededea;--line:#cfcfcb}
-  *{box-sizing:border-box}
-  html,body{margin:0;background:var(--paper);color:var(--ink);font-family:"PingFang SC","Noto Sans SC",-apple-system,sans-serif}
-  .serif{font-family:"Songti SC","Noto Serif SC","Source Han Serif SC",serif;font-weight:900}
-  .page{max-width:1400px;margin:0 auto;padding:48px 64px 72px}
-  button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
-  /* 头 */
-  .head{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:3px solid var(--rule);padding-bottom:16px}
-  .date{font-size:60px;line-height:1;letter-spacing:-1px}
-  .date small{font-size:18px;color:var(--ink2);margin-left:14px;letter-spacing:2px}
-  .count{text-align:right;font-size:13px;color:var(--ink2);line-height:1.7;display:flex;gap:26px}
-  .count b{font-size:26px;color:var(--ink);margin-right:4px}
-  .count .ok{color:var(--ink);font-weight:700}
-  /* 总进度 */
-  .prog{margin:26px 0 6px;display:grid;grid-template-columns:1fr 360px;gap:48px;align-items:end}
-  .bar{position:relative;height:14px;border:1.5px solid var(--ink);border-radius:2px;background:#fff;overflow:hidden}
-  .bar i{display:block;height:100%;background:var(--ink);width:0;transition:width .5s}
-  .bar.thin{height:8px;border-width:1px}
-  .plabel{display:flex;justify-content:space-between;font-size:12px;color:var(--ink2);margin-bottom:6px}
-  .plabel b{font-size:22px;color:var(--ink);margin-right:4px}
-  .boards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
-  .boards .plabel{margin-bottom:4px;font-size:11px}.boards .plabel b{font-size:13px}
-  .streak{font-size:12px;color:var(--ink3);margin-top:8px}
-  .streak .dots{letter-spacing:3px;font-size:11px}
-  /* 轮动条 */
-  .wheel{margin:28px 0 8px;display:flex;font-size:12px;color:var(--ink3)}
-  .wheel .seg{flex:1;position:relative;border-top:1px solid #bbb;padding-top:10px;text-align:center}
-  .wheel .seg::before{content:"";position:absolute;top:-4px;left:50%;width:7px;height:7px;border-radius:50%;background:#bbb;transform:translateX(-50%)}
-  .wheel .seg.hot{color:var(--ink);font-weight:700}
-  .wheel .seg.hot::before{background:var(--ink);width:11px;height:11px;top:-6px}
-  .wheel .seg em{display:block;font-style:normal;font-weight:400;color:var(--ink3);font-size:11px;margin-top:2px}
-  .wheel .seg u{text-decoration:none;display:block;font-weight:400;font-size:11px;color:var(--ink2);margin-top:3px}
-  .legend{font-size:12px;color:var(--ink3);margin:0 0 26px;line-height:1.8}
-  /* 两栏 */
-  .cols{display:grid;grid-template-columns:1fr 430px;gap:56px;margin-top:10px}
-  h2{font-size:22px;margin:0 0 6px;letter-spacing:1px}
-  .sub{font-size:13px;color:var(--ink2);margin:0 0 18px;line-height:1.7}
-  .grp{display:grid;grid-template-columns:128px 1fr;gap:0 22px;padding:16px 0;border-top:1px solid var(--line)}
-  .grp:first-of-type{border-top:2px solid var(--rule)}
-  .grp .tag{font-size:30px;line-height:1}
-  .grp .tag small{display:block;font-family:"PingFang SC","Noto Sans SC",sans-serif;font-weight:400;font-size:12px;color:var(--ink2);margin-top:8px;line-height:1.5}
-  .grp .ask{font-size:13px;margin:0 0 8px;padding:6px 10px;background:var(--soft);display:inline-block;border-radius:2px}
-  .empty{color:var(--ink3);font-size:14px;padding:18px 0 6px}
-  .empty.big{font-size:18px;color:var(--ink);padding:28px 0}
-  /* 卡行 */
-  .card{display:flex;align-items:baseline;gap:12px;padding:6px 0;font-size:15px;line-height:1.5;flex-wrap:wrap}
-  .card .box{width:17px;height:17px;border:1.5px solid var(--ink);border-radius:2px;flex:none;position:relative;top:3px;background:#fff}
-  .card .box.ok::after{content:"";position:absolute;left:5px;top:0;width:5px;height:10px;border:solid var(--ink);border-width:0 2px 2px 0;transform:rotate(45deg)}
-  .card .box.bad{background:var(--ink)}
-  .card .box.bad::after{content:"";position:absolute;left:4px;top:7px;width:7px;height:2px;background:#fff}
-  .card .n{color:var(--ink3);font-size:12px;min-width:38px}
-  .card .t{font-weight:500}
-  .card.done .t{color:var(--ink3);font-weight:400}
-  .card .star{letter-spacing:-1px;font-size:12px;color:var(--ink2)}
-  .card .src{color:var(--ink3);font-size:12px;margin-left:auto;white-space:nowrap}
-  .card .last{font-size:12px;background:var(--soft);padding:1px 7px;border-radius:2px}
-  .card .last.bad{background:#111;color:#fff}
-  .card .late{font-size:12px;color:#000;border:1px solid var(--ink);padding:0 6px;border-radius:2px}
-  .card .miss{font-size:12px;color:var(--ink2);text-decoration:underline dotted;margin-left:2px}
-  .card .miss:hover{color:var(--ink)}
-  .card input.mi{font:inherit;font-size:13px;border:0;border-bottom:1px solid var(--ink);background:transparent;padding:2px 4px;width:260px;outline:0}
-  /* 右栏 */
-  .tonight{border:2px solid var(--rule);padding:24px 26px 20px;position:relative;background:var(--paper)}
-  .tonight.full{background:#111;color:#fff;border-color:#111}
-  .tonight .ribbon{position:absolute;top:-12px;left:22px;background:var(--paper);padding:0 10px;font-size:12px;letter-spacing:3px;color:var(--ink2)}
-  .tonight h2{font-size:20px;display:flex;justify-content:space-between;align-items:baseline}
-  .tonight h2 button{font-size:12px;font-weight:400;color:var(--ink2);border-bottom:1px solid var(--ink3)}
-  .tonight .card{font-size:14px}
-  .tonight .card .x{font-size:12px;color:var(--ink3);margin-left:auto}
-  .gates{margin-top:18px;border-top:1px dashed #999;padding-top:14px}
-  .gates h3{font-size:12px;margin:0 0 8px;letter-spacing:2px;color:var(--ink2);font-weight:500}
-  .gate{display:flex;gap:12px;align-items:flex-start;margin:10px 0;font-size:13.5px;line-height:1.6;cursor:pointer}
-  .gate .box{width:18px;height:18px;border:1.5px solid var(--ink);border-radius:50%;flex:none;margin-top:3px;background:#fff;position:relative}
-  .gate .box.ok{background:var(--ink)}
-  .gate .box.ok::after{content:"";position:absolute;left:6px;top:2px;width:4px;height:9px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
-  .gate b{display:block;font-weight:700}
-  .gate span{color:var(--ink2)}
-  .nope{margin-top:14px;font-size:12px;color:var(--ink3);line-height:1.7}
-  .d0btn{margin-top:16px;width:100%;padding:10px;border:1.5px solid var(--ink);font-size:14px;font-weight:600;letter-spacing:2px}
-  .d0btn:disabled{opacity:.3;cursor:not-allowed}
-  .d0btn.done{background:var(--ink);color:#fff}
-  .picker{margin-top:14px;border-top:1px dashed #999;padding-top:12px;max-height:380px;overflow:auto;font-size:13px}
-  .picker .ch{color:var(--ink3);font-size:11px;margin:10px 0 4px;letter-spacing:1px}
-  .picker .row{display:flex;gap:8px;align-items:center;padding:3px 0}
-  .picker .row .id{color:var(--ink3);font-size:11px;min-width:34px}
-  .picker .row .op{margin-left:auto;display:flex;gap:6px}
-  .picker .row .op button{font-size:11px;border:1px solid var(--ink3);padding:1px 6px;border-radius:2px;color:var(--ink2)}
-  .picker .row .op button:hover{border-color:var(--ink);color:var(--ink)}
-  .tomorrow{margin-top:30px;font-size:13px;color:var(--ink2);line-height:1.9;border-left:3px solid var(--ink);padding-left:16px}
-  .tomorrow b{color:var(--ink)}
-  .foot{margin-top:52px;border-top:1px solid var(--line);padding-top:12px;display:flex;justify-content:space-between;font-size:12px;color:var(--ink3)}
-  .foot button{text-decoration:underline dotted}
-  .toast{position:fixed;right:24px;bottom:24px;background:#111;color:#fff;padding:8px 14px;font-size:12px;border-radius:2px;opacity:0;transition:opacity .3s;pointer-events:none}
-  .toast.show{opacity:1}
-  /* 今日记录 */
-  .note{margin-top:30px}
-  .note h3{font-size:12px;letter-spacing:2px;color:var(--ink2);font-weight:500;margin:0 0 8px}
-  .note textarea{width:100%;min-height:84px;border:1.5px solid var(--ink);border-radius:2px;background:#fff;font:inherit;font-size:14px;line-height:1.6;padding:10px 12px;resize:vertical;outline:0}
-  .note .past{margin-top:12px;font-size:12.5px;color:var(--ink2);line-height:1.7}
-  .note .past span{display:inline-block;min-width:44px;color:var(--ink3)}
-  /* 令牌弹窗 */
-  .modal{position:fixed;inset:0;background:rgba(251,250,247,.92);display:flex;align-items:center;justify-content:center;z-index:9}
-  .modal .box{border:2px solid var(--ink);background:var(--paper);padding:28px 32px;max-width:460px;width:92%}
-  .modal h2{margin:0 0 10px}.modal p{font-size:13.5px;line-height:1.7;color:var(--ink2);margin:0 0 14px}
-  .modal code{background:var(--soft);padding:1px 5px}
-  .modal input{width:100%;font:inherit;font-size:14px;padding:10px 12px;border:1.5px solid var(--ink);border-radius:2px;outline:0;background:#fff}
-  .modal .row{display:flex;gap:10px;margin-top:14px}
-  .modal .row button{padding:9px 16px;border:1.5px solid var(--ink);font-size:14px;font-weight:600}
-  .modal .row button:first-child{background:var(--ink);color:#fff}
-  .modal .hint{font-size:12px;color:var(--ink3);margin:14px 0 0}
-  @media (max-width:1000px){
-    .cols,.prog{grid-template-columns:1fr}.page{padding:22px 16px 48px}
-    .date{font-size:40px}.date small{display:block;margin:8px 0 0;font-size:13px}
-    .head{align-items:flex-start;flex-direction:column;gap:10px}.count{text-align:left;gap:16px;flex-wrap:wrap}
-    .boards{grid-template-columns:1fr}
-    .wheel{flex-wrap:wrap;gap:12px 0}.wheel .seg{flex:1 0 25%}
-    .grp{grid-template-columns:1fr;gap:8px}.grp .tag{font-size:22px}.grp .tag small{display:inline;margin-left:8px}
-    .card{font-size:14px}.card .src{display:none}
-    .card .box{width:22px;height:22px}
-  }
-</style>
-</head>
-<body>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>打卡</title>
+<link rel="stylesheet" href="style.css">
+</head><body>
+<div class="sky"></div>
+<div class="cloud" style="left:8%;top:150px;width:260px;height:110px"></div>
+<div class="cloud" style="left:60%;top:110px;width:320px;height:130px"></div>
+<div class="cloud" style="left:82%;top:210px;width:220px;height:90px"></div>
 <div class="page" id="app"></div>
 <div class="toast" id="toast"></div>
 <script src="cards.js"></script>
 <script src="app.js"></script>
-</body>
-</html>
+<script src="ui.js"></script>
+</body></html>

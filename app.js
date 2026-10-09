@@ -102,20 +102,22 @@ function exportState(){
   const blob = new Blob([JSON.stringify(S,null,1)],{type:"application/json"});
   const a = document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`state-${TODAY}.json`; a.click();
 }
-function setNote(t){ day().note = t; save(); }   // 不 render,免得打字时丢焦点
-function pastNotes(){
-  const ds = Object.keys(S.days).filter(d=>d<TODAY && S.days[d].note).sort().reverse().slice(0,5);
-  if (!ds.length) return "";
-  return `<div class="past">${ds.map(d=>`<div><span>${d.slice(5)}</span>${esc(S.days[d].note)}</div>`).join("")}</div>`;
-}
+/* 今日日志:一条一发 */
+function addLog(text){ const t=text.trim(); if(!t) return; (day().log ||= []).push({t:new Date().toTimeString().slice(0,5), x:t}); save(); render(); }
+function delLog(i){ const l=day().log||[]; l.splice(i,1); save(); render(); }
+/* 今天还要做:按科目分区,自带科目 */
+const SUBJECTS = ["传播学","英语二","政治","其他"];
+function addTodo(subj, text){ const t=text.trim(); if(!t) return; (day().todos ||= []).push({s:subj||"其他", x:t, ok:false}); save(); render(); }
+function toggleTodo(i){ const l=day().todos||[]; if(l[i]) l[i].ok=!l[i].ok; save(); render(); }
+function delTodo(i){ const l=day().todos||[]; l.splice(i,1); save(); render(); }
 function askToken(){
   document.getElementById("app").insertAdjacentHTML("beforeend", `
-  <div class="modal" id="modal"><div class="box">
+  <div class="modal" id="modal"><div class="box2">
     <h2 class="serif">开启云端同步</h2>
     <p>贴一次令牌，这台设备就永久记住。进度存进你自己的私有仓库 <code>${GH.owner}/${GH.repo}</code>，手机电脑共用一份。</p>
     <input id="tok" type="password" placeholder="github_pat_…" autocomplete="off">
     <div class="row"><button id="tokok">保存并同步</button><button id="tokno">先不用</button></div>
-    <p class="hint">令牌只存在这个浏览器里，不会发给除 GitHub 以外的任何地方。</p>
+    <p class="hint2">令牌只存在这个浏览器里，不会发给除 GitHub 以外的任何地方。</p>
   </div></div>`);
   const m = document.getElementById("modal");
   document.getElementById("tokno").onclick = () => m.remove();
@@ -220,159 +222,6 @@ function tomorrowPreview(){
   const loads=[]; for(let i=2;i<=7;i++){ const dd=addDays(TODAY,i); loads.push(CARDS.filter(c=>{const s=cs(c.id);return s&&s.due===dd;}).length); }
   const mx = Math.max(...loads,0), mi = loads.indexOf(mx);
   return { parts, n, heavy: mx>=12 ? `${addDays(TODAY,mi+2).slice(5).replace("-","-")} 会滚到 ${mx} 张，那天前后新卡建议减到 2 张。` : "" };
-}
-
-/* ---------- 渲染 ---------- */
-const esc = s => String(s).replace(/[&<>"]/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
-function cardRow(c, r, s){
-  const late = (!r && s.due < TODAY) ? `<span class="late">迟 ${diffDays(TODAY,s.due)} 天</span>` : "";
-  const lastH = (s.hist||[]).filter(h=>h.d!==TODAY).slice(-1)[0];
-  const last = lastH && lastH.at!=="D0" ? (lastH.ok ? `<span class="last">${lastH.at} 全对${s.passes&&!r?` ${s.passes}/2`:""}</span>` : `<span class="last bad">${lastH.at} 漏：${esc(lastH.miss||"未记")}</span>`) : "";
-  const box = r ? (r.ok ? "ok" : "bad") : "";
-  let missEl = "";
-  if (r && !r.ok) {
-    missEl = editingMiss===c.id
-      ? `<input class="mi" data-miss="${c.id}" value="${esc(r.miss)}" placeholder="漏了什么，一行" autofocus>`
-      : `<button class="miss" data-editmiss="${c.id}">${r.miss ? "漏："+esc(r.miss) : "记一下漏了什么"}</button>`;
-  }
-  return `<div class="card ${r?"done":""}">
-    <button class="box ${box}" data-ok="${c.id}" title="点一下=过，再点=漏，再点=撤销"></button>
-    <span class="n">${c.id}</span>
-    <span class="t">${esc(c.title)}</span>${c.star?`<span class="star">${c.star}</span>`:""}
-    ${late}${r?"":last}${missEl}
-    <span class="src">${c.board} ${esc(c.chapShort)}</span>
-  </div>`;
-}
-
-function render(){
-  const app = document.getElementById("app");
-  const td = day();
-  const due = dueToday();
-  const groups = groupByStage(due);
-  const reviewed = due.filter(c=>td.rev[c.id]).length;
-  const allDone = due.length>0 && reviewed===due.length;
-  const P = progress(CARDS);
-  const boards = Object.keys(ABBR).map(b => ({b, ...progress(CARDS.filter(c=>c.board===b))}));
-  const hot = new Set(due.map(c=> (td.rev[c.id]?td.rev[c.id].stage:cs(c.id).stage)));
-  if (td.d0.length) hot.add(0);
-  const stageCount = st => CARDS.filter(c=>{const s=cs(c.id);return s&&s.stage===st;}).length;
-  const dt = parse(TODAY);
-  const tp = tomorrowPreview();
-  const unlearned = CARDS.filter(c=>!cs(c.id));
-
-  // 右栏：今晚
-  const tonightCards = td.d0.map(id=>BYID[id]).filter(Boolean);
-  const chapOfTonight = [...new Set(tonightCards.map(c=>`${c.board} ${c.chapShort}`))].join(" · ");
-  let picker = "";
-  if (pickerOpen && !td.d0done) {
-    let cur = ""; const rows = [];
-    unlearned.forEach(c => {
-      const key = `${c.board}｜${c.chap}`;
-      if (key!==cur) { cur=key; rows.push(`<div class="ch">${esc(c.board)} · ${esc(c.chap)} <button data-addch="${esc(c.board)}|||${esc(c.chap)}" style="margin-left:8px;text-decoration:underline">整章加入</button></div>`); }
-      const inT = td.d0.includes(c.id);
-      rows.push(`<div class="row"><span class="id">${c.id}</span><span>${esc(c.title)}</span><span class="op"><button data-pick="${c.id}">${inT?"移出":"加入"}</button></span></div>`);
-    });
-    picker = `<div class="picker">${rows.join("")||'<div class="empty">86 张全学过了。</div>'}</div>`;
-  }
-
-  app.innerHTML = `
-  <div class="head">
-    <div class="date serif">${dt.getMonth()+1}月${dt.getDate()}日<small>周${WEEK[dt.getDay()]} · 考前 ${diffDays(EXAM,TODAY)} 天</small></div>
-    <div class="count">
-      <span><b class="serif">${reviewed}</b>/ ${due.length} 今早已掏 ${allDone?'<span class="ok">✓ 清空</span>':''}</span>
-      <span><b class="serif">${td.d0done?td.d0.length:td.d0.length}</b>张今晚新学 ${td.d0done?'<span class="ok">✓</span>':''}</span>
-      <span><b class="serif">${P.out}</b>/ ${P.total} 已出池</span>
-    </div>
-  </div>
-
-  <div class="prog">
-    <div>
-      <div class="plabel"><span><b class="serif">${P.pct.toFixed(1)}%</b>总进度 · 86 张卡各走到第几格，加起来</span><span>已学 ${P.learned} / ${P.total} 张 · 未学 ${P.total-P.learned}</span></div>
-      <div class="bar"><i style="width:${P.pct}%"></i></div>
-      <div class="streak">近 14 天 <span class="dots">${streakDots()}</span>（● = 那天掏过或学过新卡）</div>
-    </div>
-    <div class="boards">${boards.map(x=>`<div><div class="plabel"><span><b>${x.pct.toFixed(0)}%</b> ${x.b}</span><span>${x.learned}/${x.total}</span></div><div class="bar thin"><i style="width:${x.pct}%"></i></div></div>`).join("")}</div>
-  </div>
-
-  <div class="wheel">${STAGES.map((s,i)=>`<div class="seg ${hot.has(i)?"hot":""}">${s.k}<em>${s.short}</em><u>${i===0?"":stageCount(i)+" 张在此"}</u></div>`).join("")}</div>
-  <p class="legend">轮动规则：每过一关往右走一格；漏了不清零，退回上一格明早重走。D7、D15 连续两次全对的卡出池，只在 D30 / 考前抽查。黑点＝今天有卡停在这一格。</p>
-
-  <div class="cols">
-    <div>
-      <h2 class="serif">今早要掏的</h2>
-      <p class="sub">摘耳机、合稿。按组掏，每组开头那句是这一轮掏什么。掏完只标漏，不补讲。<br>方框点一下＝过，再点＝漏（会让你记一行漏了什么），再点＝撤销。</p>
-      ${groups.length ? groups.map(g=>`
-        <div class="grp">
-          <div class="tag serif">${STAGES[g.st].k}<small>${g.cards.length} 张${g.st===1?"<br>昨晚学的":""}</small></div>
-          <div><div class="ask">${STAGES[g.st].ask}</div>${g.cards.map(c=>cardRow(c, td.rev[c.id], cs(c.id))).join("")}</div>
-        </div>`).join("")
-        : `<div class="grp"><div></div><div class="empty big">${P.learned? "今早没有卡滚到。":"还没有卡。今晚在右边选第一批新卡，明早就会滚到这里。"}</div></div>`}
-      ${allDone ? `<div class="grp"><div></div><div class="empty big">今早 ${due.length} 张清空。✓</div></div>` : ""}
-    </div>
-
-    <div>
-      <div class="tonight ${td.d0done?"full":""}">
-        <span class="ribbon">今晚 D0</span>
-        <h2 class="serif">新学 ${td.d0.length} 张 ${td.d0done?"":`<button data-picker>${pickerOpen?"收起":"选卡 ▾"}</button>`}</h2>
-        ${chapOfTonight?`<p class="sub" style="margin-bottom:10px;${td.d0done?"color:#bbb":""}">${esc(chapOfTonight)}</p>`:""}
-        ${tonightCards.length ? tonightCards.map(c=>`<div class="card"><span class="box ${td.d0done?"ok":""}" style="${td.d0done?"border-color:#fff;background:#111":""}"></span><span class="n">${c.id}</span><span class="t">${esc(c.title)}</span>${td.d0done?"":`<button class="x" data-pick="${c.id}">移出</button>`}</div>`).join("")
-          : `<div class="empty">还没选。点「选卡」从没学过的 ${unlearned.length} 张里挑今晚的（建议 3–5 张，同一章）。</div>`}
-        ${picker}
-        <div class="gates">
-          <h3>第一天过关的两道门</h3>
-          <div class="gate" data-gate="0"><span class="box ${td.gates[0]?"ok":""}"></span><div><b>① 白纸上画出这一章的链</b><span>卡名一个不漏、顺序对，每两张之间写一句「前一格看不见什么 → 所以出现它」。</span></div></div>
-          <div class="gate" data-gate="1"><span class="box ${td.gates[1]?"ok":""}"></span><div><b>② 看卡名能掏钉子 + 关键词</b><span>关键词八成以上，结构性错误零个。漏一两个词正常，标上就行。</span></div></div>
-          <p class="nope" style="${td.d0done?"color:#aaa":""}">今晚不要求默成稿，成稿是 D4 的事。耳机循环放在今晚到明早之间，明早 6:30 摘耳机掏一次，才知道它有没有用。</p>
-        </div>
-        ${td.d0done
-          ? `<button class="d0btn done" data-undod0>今晚完成 ✓（点此撤销）</button>`
-          : `<button class="d0btn" data-finishd0 ${(td.gates[0]&&td.gates[1]&&td.d0.length)?"":"disabled"}>两道门都过了，今晚完成</button>`}
-      </div>
-
-      <div class="tomorrow">
-        <b>明天 ${TOMORROW.slice(5).replace("-","-")} 会滚到：</b><br>
-        ${tp.parts.length ? tp.parts.join(" · ") : "暂时没有"}<br>
-        ${tp.n ? `共 ${tp.n} 张，约 ${Math.round(tp.n*2.5)} 分钟。` : ""}
-        ${tp.heavy ? `<br><b>${tp.heavy}</b>` : ""}
-      </div>
-
-      <div class="note">
-        <h3>今天干了什么</h3>
-        <textarea data-note placeholder="一两行就行：学到哪、卡在哪、明天想先掏什么。">${esc(td.note||"")}</textarea>
-        ${pastNotes()}
-      </div>
-    </div>
-  </div>
-
-  <div class="foot">
-    <span>${SERVER==="github" ? "云端同步中（手机/电脑共用） · <button data-logout>换令牌</button>" : SERVER==="local" ? "进度写入 打卡/state.json" : `⚠ 进度只存在这个浏览器里 · <button data-login>贴令牌开启云端同步</button>`}${loadError?` · <b style="color:#000">云端读取失败：${esc(loadError)}</b>`:""} · <button data-export>导出备份</button></span>
-    <span>间隔 1 / 2 / 4 / 7 / 15 / 30 / 60 天 · 艾宾浩斯 + 莱特纳退格</span>
-  </div>`;
-  const ex = app.querySelector("[data-export]"); if (ex) ex.onclick = exportState;
-  const lg = app.querySelector("[data-login]"); if (lg) lg.onclick = askToken;
-  const lo = app.querySelector("[data-logout]"); if (lo) lo.onclick = askToken;
-  const nt = app.querySelector("[data-note]"); if (nt) { let t; nt.oninput = () => { clearTimeout(t); t=setTimeout(()=>setNote(nt.value),600); }; }
-
-  // 事件
-  app.querySelectorAll("[data-ok]").forEach(b => b.onclick = () => {
-    const id=b.dataset.ok, r=td.rev[id];
-    if (!r) mark(id, true);
-    else if (r.ok) { mark(id, false); editingMiss=id; render(); }
-    else { mark(id, false); } // 第三次：撤销（mark 内部判断同状态撤销）
-  });
-  app.querySelectorAll("[data-editmiss]").forEach(b => b.onclick = () => { editingMiss=b.dataset.editmiss; render(); });
-  app.querySelectorAll("input.mi").forEach(inp => {
-    inp.focus();
-    const done = () => { editingMiss=null; setMiss(inp.dataset.miss, inp.value.trim()); };
-    inp.onkeydown = e => { if (e.key==="Enter") done(); if (e.key==="Escape"){ editingMiss=null; render(); } };
-    inp.onblur = done;
-  });
-  app.querySelectorAll("[data-pick]").forEach(b => b.onclick = () => toggleTonight(b.dataset.pick));
-  app.querySelectorAll("[data-addch]").forEach(b => b.onclick = () => { const [bd,ch]=b.dataset.addch.split("|||"); addChapter(bd,ch); });
-  app.querySelectorAll("[data-gate]").forEach(b => b.onclick = () => toggleGate(+b.dataset.gate));
-  const pk = app.querySelector("[data-picker]"); if (pk) pk.onclick = () => { pickerOpen=!pickerOpen; render(); };
-  const fd = app.querySelector("[data-finishd0]"); if (fd) fd.onclick = finishD0;
-  const ud = app.querySelector("[data-undod0]"); if (ud) ud.onclick = () => { if (confirm("撤销今晚完成？这批卡会回到未学。")) undoD0(); };
 }
 
 load().then(() => {
