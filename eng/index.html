@@ -63,6 +63,12 @@ h2 .n{font-size:14px;color:var(--ink2);margin-left:12px;font-family:"PingFang SC
 .dots{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 4px}
 .dots i{width:18px;height:18px;border:1.5px solid var(--ink);background:#fff;display:block}
 .dots i.ok{background:var(--lime)}.dots i.cur{background:var(--yel)}
+/* last strip */
+.last{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1.5px solid var(--ink);border-left-width:8px;padding:10px 14px;margin-bottom:14px;font-size:17px;box-shadow:3px 3px 0 var(--ink)}
+.last.ok{border-left-color:var(--lime)}.last.fz{border-left-color:var(--yel)}.last.no{border-left-color:#E35D6A;background:#FFF3F4}
+.last b{font-size:26px;font-weight:400}
+.last .lm{color:var(--ink);flex:1;min-width:200px}
+.last .ls{color:var(--ink3);font-size:14px;width:100%}
 /* study card */
 .study{max-width:760px;margin:0 auto}
 .topline{display:flex;justify-content:space-between;align-items:center;font-size:15px;color:var(--ink2);margin-bottom:12px}
@@ -205,19 +211,25 @@ async function ghSave(retry = true) {
 async function cloudInit() {
   if (!token() || location.protocol === 'file:') return;
   try {
-    const remote = await ghLoad(); CLOUD = true;
+    const remote = await ghLoad();
+    if (remote === null) { // 文件不存在 或 令牌看不到这个仓(GitHub 对无权限的私有仓一律回 404)
+      const r = await fetch(`https://api.github.com/repos/${GH.owner}/${GH.repo}`, { headers: ghH() });
+      if (!r.ok) throw new Error('令牌看不到 dk-data(GitHub 回 404)。去设置里重贴一个勾了 dk-data · Contents 读写的令牌');
+    }
+    CLOUD = true;
     if (remote && remote.cards && (remote.updated || '') > (S.updated || '')) { S = Object.assign(load(), remote); localStorage.setItem(LS, JSON.stringify(S)); render(); toast('已拉取云端进度'); }
     else if (Object.keys(S.cards).length) saveNow();
     setCloudBadge();
-  } catch (e) { toast('云同步失败:' + e.message); }
+  } catch (e) { CLOUD = false; cloudErr = e.message; setCloudBadge(); toast('云同步未开:' + e.message); }
 }
+let cloudErr = '';
 async function saveNow() {
   if (!CLOUD) return; if (saving) { dirty = true; return; }
   saving = true;
-  try { await ghSave(); } catch (e) { toast('云端保存失败:' + e.message); }
+  try { await ghSave(); } catch (e) { CLOUD = false; cloudErr = e.message; setCloudBadge(); toast('云端保存失败(本机已记,不影响打卡):' + e.message); }
   saving = false; if (dirty) { dirty = false; saveNow(); }
 }
-function setCloudBadge() { const el = $('#srcnote'); if (el) el.textContent = CLOUD ? '☁ 云同步中' : (location.protocol === 'file:' ? '本机文件' : '未贴令牌 · 仅存本机'); }
+function setCloudBadge() { const el = $('#srcnote'); if (el) el.textContent = CLOUD ? '☁ 云同步中' : (location.protocol === 'file:' ? '本机文件' : (cloudErr ? '⚠ 云同步失败 · 仅存本机(设置里重贴令牌)' : '未贴令牌 · 仅存本机')); }
 function askToken() { const v = prompt('贴 GitHub 令牌(和打卡页同一个,只勾 dk-data Contents 读写):', token()); if (v != null) { localStorage.setItem('dk_token', v.trim()); location.reload(); } }
 function load() {
   let s = {}; try { s = JSON.parse(localStorage.getItem(LS) || '{}'); } catch (e) { s = {}; }
@@ -280,7 +292,7 @@ function renderHero() {
 
 /* ---------- 路由 ---------- */
 let route = 'home';
-function go(r, arg) { route = r; undoStack = []; render(arg); window.scrollTo(0, 0); }
+function go(r, arg) { route = r; undoStack = []; LAST = null; render(arg); window.scrollTo(0, 0); }
 function render(arg) {
   ensureToday(); renderHero();
   $('#crumbs').innerHTML = route === 'home' ? `<span>首页 · 点一块进去;键盘 <span class="k">1</span><span class="k">2</span><span class="k">3</span> 评分 <span class="k">空格</span> 翻面 <span class="k">Z</span> 撤销</span>` : `<button onclick="go('home')">← 首页</button><span>${TITLES[route] || ''}</span>`;
@@ -367,8 +379,15 @@ function cardHTML(w, hidden, opts = {}) {
   </div>`;
 }
 let cur = null; // {queue, onRate, title, left}
+let LAST = null; // 上一张:评分后把中文显示一次
+function lastHTML() {
+  if (!LAST) return '';
+  const w = LAST.w, lab = { 1: ['忘了', 'no'], 2: ['模糊', 'fz'], 3: ['记得', 'ok'] }[LAST.k];
+  return `<div class="last ${lab[1]}"><span class="stk ${lab[1] === 'ok' ? 'l' : lab[1] === 'fz' ? 'y' : ''}">上一张 · ${lab[0]}</span><b class="ser">${w.w}</b><span class="lm">${w.m}</span>${w.syn ? `<span class="ls">${w.syn}</span>` : ''}</div>`;
+}
+function markLast(w, k) { LAST = { w, k }; }
 function reveal() { const c = $('#wcard'); if (c) c.classList.remove('hide'); if (cur) cur.revealed = true; }
-function rate(k) { if (!cur || !cur.queue.length) return; cur.onRate(k); }
+function rate(k) { if (!cur || !cur.queue.length) return; const w = BY[cur.queue[0]]; if (w) markLast(w, k); cur.onRate(k); }
 function undo() { const u = undoStack.pop(); if (!u) { toast('没有可撤销的'); return; } u(); save(); render(); toast('已撤销'); }
 function snapshot() { return JSON.stringify({ cards: S.cards, days: S.days }); }
 function restore(snap) { const o = JSON.parse(snap); S.cards = o.cards; S.days = o.days; }
@@ -393,7 +412,7 @@ function review() {
   };
   $('#view').innerHTML = `<div class="study">
     <div class="topline"><span>剩余 ${cur.queue.length} · 今天已复习 ${day().rev}</span><span>${w.i + 1}/${W.length} 号</span></div>
-    ${cardHTML(w, true)}
+    ${lastHTML()}${cardHTML(w, true)}
     <div class="btns">
       <button class="no" onclick="rate(1)">忘了<small>退回 D1 · 键 1</small></button>
       <button class="fz" onclick="rate(2)">模糊<small>明天再来 · 键 2</small></button>
@@ -446,7 +465,7 @@ function learn() {
   const batchNo = Math.floor(t.newIds.indexOf(w.i) / S.cfg.batch) + 1;
   $('#view').innerHTML = `<div class="study">
     <div class="topline"><span>第 ${batchNo} 批 · 本批剩 ${new Set(cur.queue).size} · 今日 ${t.learned.length}/${t.newIds.length}</span><span>${cur.seen[w.i] ? '第 ' + (cur.seen[w.i] + 1) + ' 次见' : '首见'}</span></div>
-    ${cardHTML(w, true)}
+    ${lastHTML()}${cardHTML(w, true)}
     <div class="btns">
       <button class="no" onclick="rate(1)">不认识<small>4 个后再来 · 键 1</small></button>
       <button class="fz" onclick="rate(2)">模糊<small>8 个后再来 · 键 2</small></button>
@@ -473,7 +492,7 @@ function anchor() {
   };
   $('#view').innerHTML = `<div class="study">
     <div class="topline"><span>锚点 · 剩 ${cur.queue.length}/${t.hard.length}</span><span>还掏不出 ${cur.miss.length}</span></div>
-    ${cardHTML(w, true)}
+    ${lastHTML()}${cardHTML(w, true)}
     <div class="btns">
       <button class="no" onclick="rate(1)">还是不会<small>键 1</small></button>
       <button class="ok" onclick="rate(3)">掏出来了<small>键 3</small></button>

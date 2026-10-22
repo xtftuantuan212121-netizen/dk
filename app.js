@@ -40,7 +40,12 @@ const b64e = s => btoa(unescape(encodeURIComponent(s)));
 const b64d = s => decodeURIComponent(escape(atob(s.replace(/\n/g,""))));
 async function ghLoad(){
   const r = await fetch(`https://api.github.com/repos/${GH.owner}/${GH.repo}/contents/${GH.path}?t=${Date.now()}`, {headers:ghHeaders(), cache:"no-store"});
-  if (r.status===404) { ghSha=null; return {cards:{},days:{}}; }
+  if (r.status===404) {
+    // 文件不存在 或 令牌根本看不到这个私有仓(GitHub 对无权限一律回 404) → 分辨一下
+    const rr = await fetch(`https://api.github.com/repos/${GH.owner}/${GH.repo}`, {headers:ghHeaders()});
+    if (!rr.ok) throw new Error("令牌看不到 dk-data(404)。重贴一个勾了 dk-data · Contents 读写 的令牌");
+    ghSha=null; return {cards:{},days:{}};
+  }
   if (r.status===401 || r.status===403) throw new Error("令牌无效或没权限");
   if (!r.ok) throw new Error("GitHub "+r.status);
   const j = await r.json(); ghSha = j.sha; return JSON.parse(b64d(j.content));
@@ -94,7 +99,7 @@ async function saveNow(){
   try {
     if (SERVER==="github") { await ghSave(); toast("已同步到云端 ✓"); }
     else { const r = await fetch("/state",{method:"POST",body:JSON.stringify(S)}); toast(r.ok?"已存 state.json":"存文件失败"); }
-  } catch(e){ toast("云端同步失败:"+e.message+"(本机已存)"); }
+  } catch(e){ toast("云端同步失败:"+e.message+"(本机已存)"); if (/404|401|403/.test(e.message)) { SERVER=false; loadError=e.message; } }
   saving = false;
   if (dirty) { dirty=false; saveNow(); }
 }
